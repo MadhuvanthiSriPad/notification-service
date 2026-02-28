@@ -128,9 +128,11 @@ async def handle_recovery_complete(
         try:
             jira = JiraClient()
             comment_doc = build_recovery_comment(event, billing_summary)
+            any_comment_sent = False
             for ticket in tickets:
                 try:
                     await jira.add_comment(ticket.jira_issue_key, comment_doc)
+                    any_comment_sent = True
                 except Exception as exc:
                     logger.error(
                         "Jira comment failed for %s: %s",
@@ -138,7 +140,7 @@ async def handle_recovery_complete(
                         exc,
                     )
                     errors.append(f"jira_comment:{ticket.jira_issue_key}: {exc}")
-            record.jira_sent = True
+            record.jira_sent = any_comment_sent
             await jira.close()
         except Exception as exc:
             logger.error("Jira client init failed: %s", exc)
