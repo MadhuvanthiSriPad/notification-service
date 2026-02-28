@@ -18,7 +18,7 @@ def build_pr_notification(
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": "Remediation PR Ready for Review",
+                "text": "Downstream Remediation PR Ready for Review",
                 "emoji": True,
             },
         },
@@ -27,7 +27,7 @@ def build_pr_notification(
             "fields": [
                 {
                     "type": "mrkdwn",
-                    "text": f"*Service:*\n{event.target_service}",
+                    "text": f"*Downstream service:*\n{event.target_service}",
                 },
                 {
                     "type": "mrkdwn",
@@ -37,15 +37,28 @@ def build_pr_notification(
         },
         {
             "type": "section",
+            "fields": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Downstream repo:*\n{event.target_repo}",
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Source:*\napi-core contract change",
+                },
+            ],
+        },
+        {
+            "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"*Change summary:*\n{event.summary or 'Contract change detected'}",
+                "text": f"*Change summary:*\n{event.summary or 'Upstream contract change detected — downstream PR raised automatically'}",
             },
         },
     ]
 
-    # Links section
-    links_parts = [f":github: <{event.pr_url}|Pull Request>"]
+    # Links section — PR is on the downstream repo
+    links_parts = [f":github: <{event.pr_url}|Downstream PR>"]
     if jira_issue_key and jira_issue_url:
         links_parts.append(f":jira2: <{jira_issue_url}|{jira_issue_key}>")
     links_parts.append(f":robot_face: <{event.devin_session_url}|Devin Session>")
@@ -62,7 +75,7 @@ def build_pr_notification(
         "type": "section",
         "text": {
             "type": "mrkdwn",
-            "text": ":point_right: *Please review and merge this PR.*",
+            "text": ":point_right: *Please review and merge this downstream PR to complete the remediation.*",
         },
     })
 
