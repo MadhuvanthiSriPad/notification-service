@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from src.config import settings
-from src.schemas.events import PROpenedEvent
+from src.schemas.events import PROpenedEvent, RecoveryCompleteEvent
 
 
 def _text_node(text: str) -> dict:
@@ -90,3 +90,70 @@ def build_issue_fields(event: PROpenedEvent) -> dict:
         fields["assignee"] = {"accountId": settings.jira_assignee_account_id}
 
     return fields
+
+
+def _bullet_list(*items: str) -> dict:
+    return {
+        "type": "bulletList",
+        "content": [
+            {"type": "listItem", "content": [_paragraph(_text_node(item))]}
+            for item in items
+        ],
+    }
+
+
+def build_recovery_comment(
+    event: RecoveryCompleteEvent,
+    billing_summary: dict | None = None,
+) -> dict:
+    """Build an ADF comment body for the post-incident recovery report."""
+    mttr_min = event.mttr_seconds // 60
+    mttr_str = f"{mttr_min}m" if mttr_min < 60 else f"{mttr_min // 60}h {mttr_min % 60}m"
+    severity_label = "BREAKING" if event.is_breaking else event.severity.upper()
+    routes_text = ", ".join(event.changed_routes) if event.changed_routes else "N/A"
+
+    content = [
+        _heading("Post-Incident Recovery Report", level=2),
+        _paragraph(
+            _bold_text("Status: "),
+            _text_node("RESOLVED — all services remediated"),
+        ),
+        _paragraph(
+            _bold_text("Severity: "),
+            _text_node(f"{severity_label} ({event.severity})"),
+        ),
+        _paragraph(
+            _bold_text("MTTR: "),
+            _text_node(mttr_str),
+        ),
+        _paragraph(
+            _bold_text("Summary: "),
+            _text_node(event.summary or "Automated contract change recovery completed"),
+        ),
+        _paragraph(
+            _bold_text("Changed routes: "),
+            _text_node(routes_text),
+        ),
+        _heading("Services Remediated", level=3),
+        _bullet_list(*[
+            f"{j.target_service} — {j.pr_url or 'no PR'}"
+            for j in event.jobs
+        ]) if event.jobs else _paragraph(_text_node("No jobs recorded")),
+    ]
+
+    if billing_summary:
+        total_revenue = billing_summary.get("total_revenue", 0)
+        top_teams = billing_summary.get("top_teams", [])
+        content.append(_heading("Platform Cost Context", level=3))
+        content.append(_paragraph(
+            _bold_text("Total platform spend: "),
+            _text_node(f"${total_revenue:,.2f}"),
+        ))
+        if top_teams:
+            content.append(_bullet_list(*[
+                f"{t.get('team_name', t.get('team_id', '?'))}: "
+                f"${t.get('total_cost', 0):,.2f} ({t.get('total_sessions', 0)} sessions)"
+                for t in top_teams[:3]
+            ]))
+
+    return {"version": 1, "type": "doc", "content": content}

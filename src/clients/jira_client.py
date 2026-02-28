@@ -42,6 +42,14 @@ class JiraClient:
         logger.info("Jira issue created: %s", data.get("key"))
         return data
 
+    async def add_comment(self, issue_key: str, body_doc: dict) -> dict:
+        """Add an ADF comment to an existing Jira issue."""
+        url = f"{self._base_url}/rest/api/3/issue/{issue_key}/comment"
+        resp = await self._client.post(url, json={"body": body_doc}, headers=self._headers)
+        resp.raise_for_status()
+        logger.info("Jira comment added to %s", issue_key)
+        return resp.json()
+
     def browse_url(self, issue_key: str) -> str:
         return f"{self._base_url}/browse/{issue_key}"
 

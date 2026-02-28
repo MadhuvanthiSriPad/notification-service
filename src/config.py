@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     slack_bot_token: str = ""
     slack_channel: str = ""
 
+    # Billing service — used to enrich post-incident reports with platform cost data
+    billing_url: str = ""
+
     model_config = {"env_prefix": "NOTIF_"}
 
 
