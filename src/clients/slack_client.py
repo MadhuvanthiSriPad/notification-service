@@ -42,9 +42,10 @@ class SlackClient:
         resp.raise_for_status()
         data = resp.json()
         if not data.get("ok"):
-            logger.error("Slack API error: %s", data.get("error"))
-        else:
-            logger.info("Slack message sent to %s", self._channel)
+            error_code = data.get("error", "unknown_error")
+            logger.error("Slack API error: %s", error_code)
+            raise RuntimeError(f"Slack API returned ok=false: {error_code}")
+        logger.info("Slack message sent to %s", self._channel)
         return data
 
     async def close(self) -> None:
