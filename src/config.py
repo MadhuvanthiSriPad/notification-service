@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     slack_bot_token: str = ""
     slack_channel: str = ""
 
+    # api-core — used to fetch contract change details for recovery reports
+    api_core_url: str = ""
+
     # Billing service — used to enrich post-incident reports with platform cost data
     billing_url: str = ""
 
