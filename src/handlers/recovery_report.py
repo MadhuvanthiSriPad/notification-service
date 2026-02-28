@@ -106,16 +106,18 @@ async def handle_recovery_complete(
         if tickets:
             jira = JiraClient()
             comment_body = build_recovery_comment(event, billing_summary)
+            jira_successes = 0
             for ticket in tickets:
                 try:
                     await jira.add_comment(ticket.jira_issue_key, comment_body)
                     jira_issue_key = ticket.jira_issue_key  # keep last for response
+                    jira_successes += 1
                 except Exception as exc:
                     logger.error(
                         "Failed to comment on %s: %s", ticket.jira_issue_key, exc
                     )
                     errors.append(f"jira_comment:{ticket.jira_issue_key}: {exc}")
-            record.jira_sent = True
+            record.jira_sent = jira_successes > 0
             await jira.close()
         else:
             logger.info("No Jira tickets found for change %d", event.change_id)
