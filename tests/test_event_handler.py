@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from sqlalchemy import select
 
+from src.config import settings
 from src.database import async_session
 from src.handlers.event_handler import handle_pr_opened
 from src.models.jira_ticket import JiraTicket
@@ -137,6 +138,42 @@ async def test_valid_notification_bundle_is_used_for_jira_and_slack():
     assert "Canonical Context" in _extract_adf_text(jira_fields["description"])
     assert slack_text == "Devin-authored Slack text"
     assert slack_blocks[0]["type"] == "header"
+
+
+async def test_billing_service_uses_repo_specific_jira_project(monkeypatch):
+    mock_jira = AsyncMock()
+    mock_jira.create_issue.return_value = {"key": "BS-77"}
+    mock_jira.browse_url = Mock(return_value="https://x.atlassian.net/browse/BS-77")
+    mock_jira.close = AsyncMock()
+
+    mock_slack = AsyncMock()
+    mock_slack.send_message.return_value = {"ok": True}
+    mock_slack.close = AsyncMock()
+
+    monkeypatch.setattr(settings, "jira_project_key", "AC")
+    monkeypatch.setattr(
+        settings,
+        "jira_project_keys_by_repo",
+        {
+            "api-core": "AC",
+            "billing-service": "BS",
+            "notification-service": "NOT",
+            "dashboard-service": "DS",
+        },
+    )
+
+    event = _sample_event(notification_bundle=_sample_notification_bundle())
+
+    with (
+        patch("src.handlers.event_handler.JiraClient", return_value=mock_jira),
+        patch("src.handlers.event_handler.SlackClient", return_value=mock_slack),
+    ):
+        async with async_session() as db:
+            await handle_pr_opened(db, event)
+
+    jira_fields = mock_jira.create_issue.await_args.args[0]
+
+    assert jira_fields["project"] == {"key": "BS"}
 
 
 async def test_invalid_notification_bundle_skips_jira_and_keeps_slack_fallback():

@@ -95,6 +95,17 @@ def _coerce_adf_doc(body_doc: dict | None, description_text: str = "") -> dict:
     return _doc_from_plain_text(description_text)
 
 
+def _resolve_project_key(event: PROpenedEvent) -> str:
+    repo_mappings = {
+        str(key).strip().lower(): value.strip()
+        for key, value in settings.jira_project_keys_by_repo.items()
+        if str(key).strip() and str(value).strip()
+    }
+    repo_name = _repo_name(event.target_repo).strip().lower()
+    service_name = event.target_service.strip().lower()
+    return repo_mappings.get(repo_name) or repo_mappings.get(service_name) or settings.jira_project_key
+
+
 def _canonical_context(event: PROpenedEvent) -> list[dict]:
     return [
         _heading("Canonical Context"),
@@ -106,9 +117,9 @@ def _canonical_context(event: PROpenedEvent) -> list[dict]:
     ]
 
 
-def _build_fields(summary: str, description_doc: dict, labels: list[str]) -> dict:
+def _build_fields(summary: str, description_doc: dict, labels: list[str], project_key: str) -> dict:
     fields: dict = {
-        "project": {"key": settings.jira_project_key},
+        "project": {"key": project_key},
         "summary": summary,
         "description": description_doc,
         "issuetype": {"name": "Task"},
@@ -139,7 +150,7 @@ def build_issue_fields_from_notification_bundle(
     }
     labels = [*_base_labels(event), "devin-authored-notification"]
     summary = bundle.jira.summary.strip() or _default_issue_summary(event)
-    return _build_fields(summary, description_doc, labels)
+    return _build_fields(summary, description_doc, labels, _resolve_project_key(event))
 
 
 def build_recovery_comment(

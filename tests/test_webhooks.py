@@ -12,6 +12,7 @@ SAMPLE_EVENT = {
     "change_id": 5,
     "job_id": 42,
     "timestamp": "2026-02-28T10:30:00Z",
+    "source_repo": "https://github.com/MadhuvanthiSriPad/api-core",
     "target_repo": "https://github.com/MadhuvanthiSriPad/billing-service",
     "target_service": "billing-service",
     "pr_url": "https://github.com/MadhuvanthiSriPad/billing-service/pull/99",
@@ -20,6 +21,23 @@ SAMPLE_EVENT = {
     "is_breaking": True,
     "summary": "Added required sla_tier field",
     "changed_routes": ["POST /sessions"],
+    "notification_bundle": {
+        "author": "devin",
+        "assertions": {
+            "source_repo": "https://github.com/MadhuvanthiSriPad/api-core",
+            "target_repo": "https://github.com/MadhuvanthiSriPad/billing-service",
+            "target_service": "billing-service",
+            "pr_url": "https://github.com/MadhuvanthiSriPad/billing-service/pull/99",
+        },
+        "jira": {
+            "summary": "Devin-authored Jira summary",
+            "description_text": "Devin-authored Jira description\n\n- confirm billing payload\n- verify webhook delivery",
+        },
+        "slack": {
+            "text": "Devin-authored Slack text",
+            "blocks": [],
+        },
+    },
 }
 
 
