@@ -18,10 +18,10 @@ import json
 import logging
 from contextlib import suppress
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.clients.billing import ApiCoreClient, BillingClient
 from src.clients.jira_client import JiraClient
 from src.clients.slack_client import SlackClient
 from src.config import settings
@@ -34,18 +34,46 @@ from src.templates.slack_templates import build_recovery_report, build_recovery_
 logger = logging.getLogger(__name__)
 
 
+async def _create_tracking_session(event: RecoveryCompleteEvent) -> dict | None:
+    """Best-effort: create a tracking session on api-core for this recovery.
+
+    Includes the required ``data_residency`` field per the upstream
+    contract change.
+    """
+    if not settings.api_core_url:
+        return None
+    try:
+        client = ApiCoreClient()
+        result = await client.create_session(
+            team_id="notification-service",
+            agent_name="recovery-handler",
+            priority="high",
+            data_residency=settings.default_data_residency,
+            prompt=f"recovery_complete for change_id={event.change_id}",
+            tags=f"change_id:{event.change_id}",
+        )
+        await client.close()
+        return result
+    except Exception as exc:
+        logger.warning("Could not create tracking session on api-core: %s", exc)
+        with suppress(Exception):
+            await client.close()  # type: ignore[possibly-undefined]
+        return None
+
+
 async def _fetch_billing_summary() -> dict | None:
     """Best-effort fetch of the billing summary from billing-service."""
     if not settings.billing_url:
         return None
-    url = f"{settings.billing_url.rstrip('/')}/api/v1/billing/summary"
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            return resp.json()
+        client = BillingClient()
+        result = await client.get_billing_summary()
+        await client.close()
+        return result
     except Exception as exc:
         logger.warning("Could not fetch billing summary: %s", exc)
+        with suppress(Exception):
+            await client.close()  # type: ignore[possibly-undefined]
         return None
 
 
@@ -74,6 +102,16 @@ async def handle_recovery_complete(
     await db.flush()
 
     errors: list[str] = []
+
+    # Create a tracking session on api-core (includes data_residency)
+    tracking_session = await _create_tracking_session(event)
+    if tracking_session:
+        logger.info(
+            "Tracking session for change %d: %s",
+            event.change_id,
+            tracking_session.get("session_id", "?"),
+        )
+
     billing_summary = await _fetch_billing_summary()
 
     try:

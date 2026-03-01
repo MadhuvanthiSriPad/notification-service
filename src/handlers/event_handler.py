@@ -13,8 +13,10 @@ from contextlib import suppress
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.clients.billing import ApiCoreClient
 from src.clients.jira_client import JiraClient
 from src.clients.slack_client import SlackClient
+from src.config import settings
 from src.models.notification_event import NotificationEvent
 from src.models.jira_ticket import JiraTicket
 from src.schemas.events import NotificationBundle, PROpenedEvent, WebhookResponse
@@ -146,6 +148,24 @@ async def handle_pr_opened(
     await db.flush()
 
     errors: list[str] = []
+
+    # Create a tracking session on api-core (includes required data_residency)
+    if settings.api_core_url:
+        try:
+            api_core = ApiCoreClient()
+            await api_core.create_session(
+                team_id="notification-service",
+                agent_name="pr-opened-handler",
+                priority="high",
+                data_residency=settings.default_data_residency,
+                prompt=f"pr_opened for job_id={event.job_id} change_id={event.change_id}",
+                tags=f"change_id:{event.change_id},job_id:{event.job_id}",
+            )
+            await api_core.close()
+        except Exception as exc:
+            logger.warning("Could not create tracking session on api-core: %s", exc)
+            with suppress(Exception):
+                await api_core.close()  # type: ignore[possibly-undefined]
     jira_issue_key: str | None = None
     jira_issue_url: str | None = None
     validated_bundle = _validate_notification_bundle(event, event.notification_bundle)

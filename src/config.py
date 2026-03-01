@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     slack_bot_token: str = ""
     slack_channel: str = ""
 
+    # api-core — used for session tracking and contract change details
+    api_core_url: str = ""
+    # Required data residency region for POST /api/v1/sessions (enum: us, eu, ap)
+    default_data_residency: str = "us"
+
     # Billing service — used to enrich post-incident reports with platform cost data
     billing_url: str = ""
 
