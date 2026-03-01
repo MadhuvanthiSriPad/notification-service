@@ -29,7 +29,7 @@ from src.models.jira_ticket import JiraTicket
 from src.models.notification_event import NotificationEvent
 from src.schemas.events import RecoveryCompleteEvent, WebhookResponse
 from src.templates.jira_templates import build_recovery_comment
-from src.templates.slack_templates import build_recovery_report
+from src.templates.slack_templates import build_recovery_report, build_recovery_report_text
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,6 @@ async def handle_recovery_complete(
     """Process a recovery_complete webhook event."""
     idem_key = f"recovery_complete:{event.change_id}"
 
-    # ── Idempotency check ──
     existing = await db.execute(
         select(NotificationEvent).where(NotificationEvent.idempotency_key == idem_key)
     )
@@ -64,27 +63,24 @@ async def handle_recovery_complete(
         logger.info("Duplicate recovery webhook for change %d — skipping", event.change_id)
         return WebhookResponse(status="already_processed")
 
-    # Create tracking record immediately so a racing duplicate gets rejected.
     record = NotificationEvent(
         idempotency_key=idem_key,
         event_type=event.event_type,
         change_id=event.change_id,
-        job_id=0,  # recovery events are per-change, not per-job
+        job_id=0,
         payload_json=json.dumps(event.model_dump(), default=str),
     )
     db.add(record)
     await db.flush()
 
     errors: list[str] = []
-
-    # ── Step 1: Fetch billing context (best-effort) ──
     billing_summary = await _fetch_billing_summary()
 
-    # ── Step 2: Slack post-incident report ──
     try:
         slack = SlackClient()
         blocks = build_recovery_report(event, billing_summary)
-        await slack.send_message(blocks, text="Incident Resolved — Contract Recovery Complete")
+        fallback_text = build_recovery_report_text(event, billing_summary)
+        await slack.send_message(blocks, text=fallback_text)
         record.slack_sent = True
         await slack.close()
     except Exception as exc:
@@ -94,10 +90,8 @@ async def handle_recovery_complete(
         with suppress(Exception):
             await slack.close()  # type: ignore[possibly-undefined]
 
-    # ── Step 3: Add resolution comment to open Jira tickets ──
     jira_issue_key: str | None = None
     try:
-        # Find all Jira tickets created for jobs under this change_id
         ticket_result = await db.execute(
             select(JiraTicket).where(JiraTicket.change_id == event.change_id)
         )
@@ -110,7 +104,7 @@ async def handle_recovery_complete(
             for ticket in tickets:
                 try:
                     await jira.add_comment(ticket.jira_issue_key, comment_body)
-                    jira_issue_key = ticket.jira_issue_key  # keep last for response
+                    jira_issue_key = ticket.jira_issue_key
                     jira_successes += 1
                 except Exception as exc:
                     logger.error(
